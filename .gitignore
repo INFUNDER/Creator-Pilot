@@ -1,0 +1,11 @@
+# Ignore Python environment
+Backend/env/
+# Ignore model weights (optional)
+Backend/models/
+
+# Node modules
+Frontend/node_modules/
+Frontend/dist/
+
+# MacOS junk files
+.DS_Store
