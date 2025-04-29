@@ -3,10 +3,15 @@ from flask_cors import CORS
 import tensorflow as tf
 import numpy as np
 import os
+from transformers import T5ForConditionalGeneration, T5Tokenizer
+import torch
+import pickle
+import requests
+
 
 # Initialize Flask app
 app = Flask(__name__, static_folder="build", static_url_path="")
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}) # Enable CORS for all routes
 
 # --- Load models using tf.saved_model.load() ---
 
@@ -23,6 +28,63 @@ with open("models/vocab.pkl", "rb") as f:
 
 index_lookup = dict(zip(range(len(vocab)), vocab))
 
+# --- LOAD YOUR SENTIMENT TRANSFORMATION MODEL ---
+# OLLAMA API URL
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
+
+def call_mistral(prompt):
+    try:
+        payload = {
+            "model": "mistral",   # if your local model is named differently, adjust here
+            "prompt": prompt,
+            "stream": False
+        }
+        print(f"🌐 Sending prompt to Ollama: {prompt}")
+        response = requests.post(OLLAMA_API_URL, json=payload)
+        response.raise_for_status()
+        output = response.json()
+        generated_text = output.get("response", "").strip()
+        print(f"✅ Received from Mistral: {generated_text}")
+        return generated_text
+    except Exception as e:
+        print(f"❌ Ollama API call failed: {e}")
+        return "Sorry, could not generate response."
+
+def create_prompt(caption, style):
+    if style == "humor":
+        return f"Make the following caption funny in one line only: '{caption}'"
+    elif style == "sarcasm":
+        return f"Make the following caption sarcastic in one line only: '{caption}'"
+    elif style == "punify":
+        return f"Turn the following caption into a pun in one line only: '{caption}'"
+    elif style == "rephrase":
+        return f"Rephrase the following caption in a creative way in one line only: '{caption}'"
+    else:
+        return caption
+
+@app.route('/transform_caption', methods=['POST'])
+def transform_caption():
+    try:
+        data = request.get_json()
+        print("📩 Received Data:", data)
+
+        original_caption = data.get("caption")
+        style = data.get("style")
+
+        if not original_caption or not style:
+            return jsonify({"error": "Missing caption or style"}), 400
+
+        # Build a smart prompt based on user style
+        prompt = create_prompt(original_caption, style)
+
+        # Call the Mistral model via Ollama server
+        transformed_caption = call_mistral(prompt)
+
+        return jsonify({"transformed_caption": transformed_caption})
+
+    except Exception as e:
+        print(f"❌ Error in /transform_caption:", e)
+        return jsonify({"error": str(e)}), 500
 
 # --- Constants ---
 

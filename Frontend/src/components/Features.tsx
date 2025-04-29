@@ -74,12 +74,9 @@ const Features: React.FC = () => {
               <div className="feature-text-container flex">
                 <div className="flex-1 flex-center">
                   <p className="feature-text g_text">
-                    This project uses{' '}
-                    <span className="text-white">ResNet50</span> for image feature extraction and{' '}
-                    <span className="text-white">LSTM</span> for sequential caption generation.
-                    It trains on image-caption pairs using{' '}
-                    <span className="text-white">TensorFlow and Keras</span>,
-                    learning meaningful patterns to generate accurate captions.
+                  For image caption generation, we used a custom-trained model based on a <span className="text-white">CNN (EfficientNetB0)</span> for extracting visual features, followed by a {' '}<span className="text-white">Transformer-based encoder-decoder architecture</span> for generating natural language captions. The CNN encodes the image into feature vectors, and the Transformer decodes those features into coherent captions.
+
+For{' '} <span className="text-white">caption sentiment transformation </span>(e.g., making captions humorous, sarcastic, or pun-filled), we integrated the{' '} <span className="text-white"> Mistral-7B-Instruct model</span> via a local Ollama server. This powerful LLM (Large Language Model) receives the original caption and a style prompt, generating a creative, contextually styled version of the caption in real-time.{' '}
                   </p>
                 </div>
 
