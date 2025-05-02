@@ -3,3 +3,9 @@ flask-cors
 tensorflow
 numpy
 Pillow
+moviepy==1.0.3
+flask
+flask-cors
+openai-whisper
+opencv-python
+tqdm

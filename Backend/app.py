@@ -7,6 +7,15 @@ from transformers import T5ForConditionalGeneration, T5Tokenizer
 import torch
 import pickle
 import requests
+import shutil
+import uuid
+import cv2
+import whisper
+from flask import send_file
+from moviepy.editor import ImageSequenceClip, AudioFileClip, VideoFileClip
+from tqdm import tqdm
+from werkzeug.utils import secure_filename
+
 
 
 # Initialize Flask app
@@ -160,6 +169,98 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, path)
     else:
         return send_from_directory(app.static_folder, "index.html")
+    
+
+UPLOAD_FOLDER = "uploads"
+PROCESSED_FOLDER = "processed_videos"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PROCESSED_FOLDER, exist_ok=True)
+
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+FONT_SCALE = 0.8
+FONT_THICKNESS = 2
+
+model = whisper.load_model("base")  # Load once at startup
+
+@app.route("/caption_video", methods=["POST"])
+def caption_video():
+    if "video" not in request.files:
+        return jsonify({"error": "No video file provided"}), 400
+
+    video_file = request.files["video"]
+    filename = secure_filename(video_file.filename)
+    uid = str(uuid.uuid4())
+    video_path = os.path.join(UPLOAD_FOLDER, f"{uid}_{filename}")
+    video_file.save(video_path)
+
+    try:
+        audio_path = os.path.join(UPLOAD_FOLDER, f"{uid}_audio.mp3")
+        video = VideoFileClip(video_path)
+        video.audio.write_audiofile(audio_path)
+
+        print("\u2705 Audio extracted")
+        result = model.transcribe(audio_path, word_timestamps=True)
+        print("\u2705 Transcription done")
+
+        text_segments = []
+        for segment in result["segments"]:
+            for word in segment["words"]:
+                text_segments.append({
+                    "text": word["word"].strip(),
+                    "start": word["start"],
+                    "end": word["end"]
+                })
+
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        output_frames_path = os.path.join(UPLOAD_FOLDER, f"{uid}_frames")
+        os.makedirs(output_frames_path, exist_ok=True)
+
+        frame_index = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            current_time = frame_index / fps
+
+            for segment in text_segments:
+                if segment["start"] <= current_time <= segment["end"]:
+                    text = segment["text"]
+                    text_size, _ = cv2.getTextSize(text, FONT, FONT_SCALE, FONT_THICKNESS)
+                    text_x = int((frame.shape[1] - text_size[0]) / 2)
+                    text_y = height - 50
+                    cv2.putText(frame, text, (text_x, text_y), FONT, FONT_SCALE, (255, 255, 255), FONT_THICKNESS)
+                    break
+
+            out_path = os.path.join(output_frames_path, f"{frame_index}.jpg")
+            cv2.imwrite(out_path, frame)
+            frame_index += 1
+
+        cap.release()
+
+        frame_files = [f for f in os.listdir(output_frames_path) if f.endswith(".jpg")]
+        frame_files.sort(key=lambda x: int(x.split(".")[0]))
+        image_paths = [os.path.join(output_frames_path, f) for f in frame_files]
+
+        clip = ImageSequenceClip(image_paths, fps=fps)
+        audio = AudioFileClip(audio_path)
+        clip = clip.set_audio(audio)
+
+        final_video_path = os.path.join(PROCESSED_FOLDER, f"{uid}_captioned.mp4")
+        clip.write_videofile(final_video_path, codec='libx264')
+
+        shutil.rmtree(output_frames_path)
+        os.remove(audio_path)
+
+        return send_file(final_video_path, as_attachment=True)
+
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({"error": "Something went wrong processing the video."}), 500
 
 # --- Run app ---
 
