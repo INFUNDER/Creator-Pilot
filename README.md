@@ -79,7 +79,12 @@ npm run dev  # runs on http://localhost:5173
 
 ## 📸 Screenshots
 
+Dasboard UI
+
 ![Image UI](screenshots/img1.png)
+
+Features 
+
 ![Image UI](screenshots/img2.png)
 
 
