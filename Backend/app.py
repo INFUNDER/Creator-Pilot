@@ -284,7 +284,14 @@ def caption_video():
         final_clip = clip.set_audio(audio)
 
         final_video_path = os.path.join(PROCESSED_FOLDER, f"{uid}_captioned.mp4")
-        final_clip.write_videofile(final_video_path, codec='libx264')
+        final_clip.write_videofile(
+    final_video_path,
+    codec='libx264',
+    audio_codec='aac',           # ✅ force audio codec
+    temp_audiofile='temp-audio.m4a',
+    remove_temp=True
+)
+
 
         shutil.rmtree(output_frames_path)
         os.remove(audio_path)
