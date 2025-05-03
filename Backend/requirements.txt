@@ -1,11 +1,13 @@
-Flask
-flask-cors
-tensorflow
-numpy
-Pillow
+flask==2.3.2
+flask-cors==3.0.10
+tensorflow==2.15.0
+numpy==1.24.3
+torch==2.0.1
+transformers==4.36.2
 moviepy==1.0.3
-flask
-flask-cors
-openai-whisper
-opencv-python
-tqdm
+opencv-python==4.8.1.78
+whisper @ git+https://github.com/openai/whisper.git
+googletrans==4.0.0-rc1
+Pillow==9.5.0
+tqdm==4.66.1
+requests==2.31.0
