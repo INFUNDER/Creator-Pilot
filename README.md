@@ -79,9 +79,10 @@ npm run dev  # runs on http://localhost:5173
 
 ## 📸 Screenshots
 
-| Image Captioning | Video Captioning |
-|------------------|------------------|
-| ![Image UI](screenshots/image-ui.png) | ![Video UI](screenshots/video-ui.png) |
+![Image UI](screenshots/img1.png)
+![Image UI](screenshots/img2.png)
+
+
 
 ---
 
