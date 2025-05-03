@@ -15,6 +15,9 @@ from flask import send_file
 from moviepy.editor import ImageSequenceClip, AudioFileClip, VideoFileClip
 from tqdm import tqdm
 from werkzeug.utils import secure_filename
+from PIL import Image, ImageDraw, ImageFont
+from googletrans import Translator
+import shutil, cv2, traceback
 
 
 
@@ -173,19 +176,36 @@ def serve_react_app(path):
 
 UPLOAD_FOLDER = "uploads"
 PROCESSED_FOLDER = "processed_videos"
+FONT_PATH = os.path.join(os.path.dirname(__file__), "fonts", "Mukta-Regular.ttf")  # Unicode font
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
-FONT = cv2.FONT_HERSHEY_SIMPLEX
-FONT_SCALE = 0.8
-FONT_THICKNESS = 2
+model = whisper.load_model("medium")  # better for multilingual
+translator = Translator()
 
-model = whisper.load_model("base")  # Load once at startup
+def safe_translate(text, src_lang, target_lang):
+    try:
+        if not text or not text.strip():
+            return ""
+        translated = translator.translate(text.strip(), src=src_lang, dest=target_lang)
+        return translated.text or text
+    except Exception as e:
+        print(f"⚠️ Translation failed: {text} | {str(e)}")
+        return text
+
+def split_into_chunks(text, words_per_chunk=3):
+    words = text.strip().split()
+    return [" ".join(words[i:i+words_per_chunk]) for i in range(0, len(words), words_per_chunk)]
 
 @app.route("/caption_video", methods=["POST"])
 def caption_video():
     if "video" not in request.files:
         return jsonify({"error": "No video file provided"}), 400
+
+    # Read frontend options
+    target_lang = request.form.get("language", "en")
+    font_size = int(request.form.get("font_size", 36))
+    font_color = request.form.get("font_color", "#FFFFFF")
 
     video_file = request.files["video"]
     filename = secure_filename(video_file.filename)
@@ -197,28 +217,38 @@ def caption_video():
         audio_path = os.path.join(UPLOAD_FOLDER, f"{uid}_audio.mp3")
         video = VideoFileClip(video_path)
         video.audio.write_audiofile(audio_path)
+        print("✅ Audio extracted")
 
-        print("\u2705 Audio extracted")
         result = model.transcribe(audio_path, word_timestamps=True)
-        print("\u2705 Transcription done")
+        print("✅ Transcription complete")
+        source_lang = result.get("language", "en")
+        print("Detected source language:", source_lang)
 
-        text_segments = []
+        # Translate full segments, chunk them
+        chunked_segments = []
         for segment in result["segments"]:
-            for word in segment["words"]:
-                text_segments.append({
-                    "text": word["word"].strip(),
-                    "start": word["start"],
-                    "end": word["end"]
-                })
+            original = segment["text"]
+            translated = safe_translate(original, src_lang=source_lang, target_lang=target_lang)
+            chunks = split_into_chunks(translated, words_per_chunk=3)
+            total_duration = segment["end"] - segment["start"]
+            chunk_duration = total_duration / len(chunks) if chunks else total_duration
 
+            for i, chunk in enumerate(chunks):
+                start = segment["start"] + i * chunk_duration
+                end = start + chunk_duration
+                chunked_segments.append({"text": chunk, "start": start, "end": end})
+
+        # Prepare video frames
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
         output_frames_path = os.path.join(UPLOAD_FOLDER, f"{uid}_frames")
         os.makedirs(output_frames_path, exist_ok=True)
+
+        if not os.path.isfile(FONT_PATH):
+            raise FileNotFoundError(f"Font file not found at: {FONT_PATH}")
+        font = ImageFont.truetype(FONT_PATH, font_size)
 
         frame_index = 0
         while True:
@@ -226,15 +256,20 @@ def caption_video():
             if not ret:
                 break
             current_time = frame_index / fps
+            visible_text = [seg["text"] for seg in chunked_segments if seg["start"] <= current_time <= seg["end"]]
+            subtitle = " ".join(visible_text)
 
-            for segment in text_segments:
-                if segment["start"] <= current_time <= segment["end"]:
-                    text = segment["text"]
-                    text_size, _ = cv2.getTextSize(text, FONT, FONT_SCALE, FONT_THICKNESS)
-                    text_x = int((frame.shape[1] - text_size[0]) / 2)
-                    text_y = height - 50
-                    cv2.putText(frame, text, (text_x, text_y), FONT, FONT_SCALE, (255, 255, 255), FONT_THICKNESS)
-                    break
+            if subtitle:
+                pil_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                draw = ImageDraw.Draw(pil_img)
+                bbox = font.getbbox(subtitle)
+                text_width = bbox[2] - bbox[0]
+                text_x = (width - text_width) // 2
+                text_y = height - 80
+
+                draw.text((text_x + 2, text_y + 2), subtitle, font=font, fill="black")  # border
+                draw.text((text_x, text_y), subtitle, font=font, fill=font_color)
+                frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
             out_path = os.path.join(output_frames_path, f"{frame_index}.jpg")
             cv2.imwrite(out_path, frame)
@@ -242,25 +277,22 @@ def caption_video():
 
         cap.release()
 
-        frame_files = [f for f in os.listdir(output_frames_path) if f.endswith(".jpg")]
-        frame_files.sort(key=lambda x: int(x.split(".")[0]))
+        frame_files = sorted(os.listdir(output_frames_path), key=lambda x: int(x.split(".")[0]))
         image_paths = [os.path.join(output_frames_path, f) for f in frame_files]
-
         clip = ImageSequenceClip(image_paths, fps=fps)
         audio = AudioFileClip(audio_path)
-        clip = clip.set_audio(audio)
+        final_clip = clip.set_audio(audio)
 
         final_video_path = os.path.join(PROCESSED_FOLDER, f"{uid}_captioned.mp4")
-        clip.write_videofile(final_video_path, codec='libx264')
+        final_clip.write_videofile(final_video_path, codec='libx264')
 
         shutil.rmtree(output_frames_path)
         os.remove(audio_path)
-
         return send_file(final_video_path, as_attachment=True)
 
     except Exception as e:
-        print("Error:", e)
-        return jsonify({"error": "Something went wrong processing the video."}), 500
+        traceback.print_exc()
+        return jsonify({"error": f"Processing failed: {str(e)}"}), 500
 
 # --- Run app ---
 
