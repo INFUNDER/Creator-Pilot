@@ -15,11 +15,9 @@ An AI-powered web app that generates intelligent captions for both images and vi
   - Customize:
     - 🎨 Font color
     - 🔠 Font size
-    - 📏 Words per line
     - 🌍 Subtitle language
 
 - 🌐 **Multilingual Support**: Translate captions into your preferred language.
-- 📥 **Download Captions**: Save as `.txt` or embedded video.
 - 🤖 Powered by: OpenAI Whisper, Mistral 7B (via Ollama), and Transformers.
 
 ---
@@ -31,7 +29,7 @@ An AI-powered web app that generates intelligent captions for both images and vi
 - Flask
 - Whisper (Faster-Whisper or OpenAI)
 - Transformers
-- MoviePy, OpenCV
+- MoviePy, OpenCV , pillow
 - Flask-CORS
 
 ### 🔝 Frontend (React + Tailwind)
@@ -40,24 +38,6 @@ An AI-powered web app that generates intelligent captions for both images and vi
 - Axios + GSAP animations
 - Custom UI for file upload and subtitle controls
 
----
-
-## 📂 Project Structure
-
-```
-├── Frontend/               # React app
-│   ├── src/components/ui/  # File upload, styling
-│   ├── src/pages/          # ImageCaptionPage.tsx, VideoCaptionPage.tsx
-│   └── ...
-├── Backend/
-│   ├── app.py              # Flask server
-│   ├── transcriber.py      # Video transcription + subtitle logic
-│   ├── models/             # Saved image captioning models
-│   ├── uploads/            # Temp video/image uploads
-│   └── outputs/            # Output files with captions
-```
-
----
 
 ## 🛠️ Setup & Installation
 
